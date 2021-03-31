@@ -1,0 +1,2 @@
+# gmbd_ml3_group_retail
+GMBD\ANALYTICS FOR RETAIL CONSUMER GOODS (MBD-EN-BL2020J-1_32R213_387060)\Group assignment
