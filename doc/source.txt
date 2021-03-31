@@ -1,0 +1,3 @@
+https://www.kaggle.com/shuyangli94/food-com-recipes-and-user-interactions?select=RAW_recipes.csv
+
+https://www.kaggle.com/c/instacart-market-basket-analysis
