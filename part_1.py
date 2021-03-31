@@ -23,9 +23,6 @@ import plotly.graph_objs as go
 from plotly.tools import FigureFactory as FF
 import plotly.express as px
 
-import random
-import time
-
 # %%
 ## Constants ----
 ORDERS_SPEED_LIMIT = 10000
