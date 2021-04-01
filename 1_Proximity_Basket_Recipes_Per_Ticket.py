@@ -217,32 +217,35 @@ rl.build(TREE_QUERIES)
 # %%
 ## Closest Recipes (by ticket) ----
 ### Search for recommendations ----
-order_related_recipts = pd.DataFrame()
+order_related_recipes = pd.DataFrame()
 for index, row in tqdm(df_order_baskets.iterrows()):
     row['recipts_related'] = rl.get_nns_by_vector(row['vectors'], NUMBER_OF_RELATED_RECIPES, search_k=-1, include_distances=False)
-    order_related_recipts = order_related_recipts.append(row)
+    order_related_recipes = order_related_recipes.append(row)
 
 # %%
 ### Convert `id` to `name` ----
-order_related_recipts_p = order_related_recipts
-order_related_recipts_p = order_related_recipts_p.explode('product_id')
-order_related_recipts_p = pd.merge(order_related_recipts_p, products[['product_id', 'product_name']], left_on='product_id', right_on='product_id')
-order_related_recipts_p = order_related_recipts_p.groupby('order_id')['product_name'].apply(list)
+# Add product information
+order_related_recipes_p = order_related_recipes
+order_related_recipes_p = order_related_recipes_p.explode('product_id')
+order_related_recipes_p = pd.merge(order_related_recipes_p, products[['product_id', 'product_name']], left_on='product_id', right_on='product_id')
+order_related_recipes_p = order_related_recipes_p.groupby('order_id')['product_name'].apply(list)
 
-order_related_recipts_r = order_related_recipts
-order_related_recipts_r = order_related_recipts_r.explode('recipts_related')
-order_related_recipts_r = pd.merge(order_related_recipts_r, recipes_ingredients_raw[['recipes_id', 'name']], left_on='recipts_related', right_on='recipes_id')
-order_related_recipts_r = order_related_recipts_r.groupby('order_id')['name'].apply(list)
+# Add recipes information
+order_related_recipes_r = order_related_recipes
+order_related_recipes_r = order_related_recipes_r.explode('recipts_related')
+order_related_recipes_r = pd.merge(order_related_recipes_r, recipes_ingredients_raw[['recipes_id', 'name']], left_on='recipts_related', right_on='recipes_id')
+order_related_recipes_r = order_related_recipes_r.groupby('order_id')['name'].apply(list)
 
-order_related_recipts_list = order_related_recipts
-order_related_recipts_list = pd.merge(order_related_recipts_list, order_related_recipts_p, on='order_id')
-order_related_recipts_list = pd.merge(order_related_recipts_list, order_related_recipts_r, on='order_id')
-order_related_recipts_list.reset_index(inplace=True)
+# Merge the two previous
+order_related_recipes_list = order_related_recipes
+order_related_recipes_list = pd.merge(order_related_recipes_list, order_related_recipes_p, on='order_id')
+order_related_recipes_list = pd.merge(order_related_recipes_list, order_related_recipes_r, on='order_id')
+order_related_recipes_list.reset_index(inplace=True)
 
 # %%
 ### Print test of the model ----
 def print_test(x):
-    order_info = order_related_recipts_list.loc[x, ['order_id', 'product_name', 'name']]
+    order_info = order_related_recipes_list.loc[x, ['order_id', 'product_name', 'name']]
     print('** Order info **')
     print(order_info)
     print('\n')
