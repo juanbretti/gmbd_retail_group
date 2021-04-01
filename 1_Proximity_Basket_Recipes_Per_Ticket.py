@@ -17,12 +17,14 @@ import matplotlib.pyplot as plt
 
 # %%
 ## Constants ----
+# Limit of number of orders to process
 SPEED_LIMIT_ORDERS = 10000
-SPEED_LIMIT_RECIPES = 10000
+# Limit of number of recipes to process
+SPEED_LIMIT_RECIPES = 30000
 # Number of orders/baskets to pull similar to the requested
 NUMBER_OF_RELATED_RECIPES = 5
 # Number of dimensions of the vector annoy is going to store. 
-VECTOR_SIZE = 20
+VECTOR_SIZE = 30
 # Number of trees for queries. When making a query the more trees the easier it is to go down the right path. 
 TREE_QUERIES = 10
 # Number of product recommendation as maximum
@@ -106,37 +108,38 @@ def strToList(list_l, splitSymbol):
 
 # %%
 #### Conversion ----
-recipes_products_list = recipes.head(SPEED_LIMIT_RECIPES).copy()
-recipes_products_list['recipes_id'] = recipes_products_list.index
-recipes_products_list['ingredients'] = recipes_products_list['ingredients'].apply(lambda x: strToList(x, ','))
-recipes_products_list = recipes_products_list.explode('ingredients')
-recipes_products_list['ingredients'] = recipes_products_list['ingredients'].str.lower()
-recipes_products_list['ingredients'] = recipes_products_list['ingredients'].str.replace('\W', ' ')
+recipes_ingredients_raw = recipes.head(SPEED_LIMIT_RECIPES).copy()
+recipes_ingredients_raw['recipes_id'] = recipes_ingredients_raw.index
+recipes_ingredients_raw['ingredients'] = recipes_ingredients_raw['ingredients'].apply(lambda x: strToList(x, ','))
+
+recipes_ingredients_list = recipes_ingredients_raw.explode('ingredients')
+recipes_ingredients_list['ingredients'] = recipes_ingredients_list['ingredients'].str.lower()
+recipes_ingredients_list['ingredients'] = recipes_ingredients_list['ingredients'].str.replace('\W', ' ')
 
 # Dataframe of unique values
-recipes_products = pd.DataFrame(recipes_products_list['ingredients'].unique(), columns=['ingredient_name'])
-recipes_products['ingredient_id'] = recipes_products.index
+recipes_ingredients = pd.DataFrame(recipes_ingredients_list['ingredients'].unique(), columns=['ingredient_name'])
+recipes_ingredients['ingredient_id'] = recipes_ingredients.index
 
 # Stem and lemma
-recipes_products['ingredients_lemma'] = recipes_products['ingredient_name'].str.split()
-recipes_products['ingredients_lemma'] = recipes_products['ingredients_lemma'].apply(lambda row:[lemma.lemmatize(item) for item in row])
-recipes_products['ingredients_lemma'] = recipes_products['ingredients_lemma'].apply(lambda row:[sno.stem(item) for item in row])
+recipes_ingredients['ingredients_lemma'] = recipes_ingredients['ingredient_name'].str.split()
+recipes_ingredients['ingredients_lemma'] = recipes_ingredients['ingredients_lemma'].apply(lambda row:[lemma.lemmatize(item) for item in row])
+recipes_ingredients['ingredients_lemma'] = recipes_ingredients['ingredients_lemma'].apply(lambda row:[sno.stem(item) for item in row])
 
 # Recipes list with the `ingredient_id`
-recipes_products_list = recipes_products_list.merge(recipes_products, left_on='ingredients', right_on='ingredient_name')
+recipes_ingredients_list = pd.merge(recipes_ingredients_list, recipes_ingredients, left_on='ingredients', right_on='ingredient_name')
 
 # %%
 ## `Word2Vec` model ----
 ### Train the model ----
 
 # The `products_lemma` column is ready to be used as an input for the `Word2Vec` model. 
-products_append = products['products_lemma'].append(recipes_products['ingredients_lemma'])
+products_append = products['products_lemma'].append(recipes_ingredients['ingredients_lemma'])
 # https://stackoverflow.com/a/3724558/3780957
 products_append = pd.Series([list(x) for x in set(tuple(x) for x in products_append)])
 # to define the maximun window
 window_max = max(products_append.apply(lambda x:len(x)))
 # Create the model itself
-w2vec_model = Word2Vec(list(products_append), size=20, window=window_max, min_count=1, workers=-1)
+w2vec_model = Word2Vec(list(products_append), size=VECTOR_SIZE, window=window_max, min_count=1, workers=-1)
 
 # %%
 ### Vector calculation for products ----
@@ -150,7 +153,7 @@ def w2v_applied(df, prod, id):
     return prods_w2v.values()
 
 products['vectors'] = w2v_applied(products, 'products_lemma', 'product_id')
-recipes_products['vectors'] = w2v_applied(recipes_products, 'ingredients_lemma', 'ingredient_id')
+recipes_ingredients['vectors'] = w2v_applied(recipes_ingredients, 'ingredients_lemma', 'ingredient_id')
 
 # %%
 ## Train `annoy` ----
@@ -169,7 +172,7 @@ pv.build(TREE_QUERIES)
 ### `ingredients` ----
 iv = AnnoyIndex(VECTOR_SIZE, metric='manhattan') 
 iv.set_seed(42)
-for index, row in recipes_products.iterrows():
+for index, row in recipes_ingredients.iterrows():
     iv.add_item(row['ingredient_id'], row['vectors'])
 iv.build(TREE_QUERIES)
 
@@ -194,7 +197,7 @@ for index, row in df_order_baskets.iterrows():
 bl.build(TREE_QUERIES)
 
 ### `recipes lists` ----
-recipes_list = recipes_products_list.groupby('recipes_id')['ingredient_id'].apply(list)
+recipes_list = recipes_ingredients_list.groupby('recipes_id')['ingredient_id'].apply(list)
 
 list_w2v = dict()
 for index, row in tqdm(recipes_list.items()):
@@ -213,10 +216,41 @@ rl.build(TREE_QUERIES)
 
 # %%
 ## Closest Recipes (by ticket) ----
-
+### Search for recommendations ----
 order_related_recipts = pd.DataFrame()
 for index, row in tqdm(df_order_baskets.iterrows()):
     row['recipts_related'] = rl.get_nns_by_vector(row['vectors'], NUMBER_OF_RELATED_RECIPES, search_k=-1, include_distances=False)
     order_related_recipts = order_related_recipts.append(row)
 
+# %%
+### Convert `id` to `name` ----
+order_related_recipts_p = order_related_recipts
+order_related_recipts_p = order_related_recipts_p.explode('product_id')
+order_related_recipts_p = pd.merge(order_related_recipts_p, products[['product_id', 'product_name']], left_on='product_id', right_on='product_id')
+order_related_recipts_p = order_related_recipts_p.groupby('order_id')['product_name'].apply(list)
+
+order_related_recipts_r = order_related_recipts
+order_related_recipts_r = order_related_recipts_r.explode('recipts_related')
+order_related_recipts_r = pd.merge(order_related_recipts_r, recipes_ingredients_raw[['recipes_id', 'name']], left_on='recipts_related', right_on='recipes_id')
+order_related_recipts_r = order_related_recipts_r.groupby('order_id')['name'].apply(list)
+
+order_related_recipts_list = order_related_recipts
+order_related_recipts_list = pd.merge(order_related_recipts_list, order_related_recipts_p, on='order_id')
+order_related_recipts_list = pd.merge(order_related_recipts_list, order_related_recipts_r, on='order_id')
+order_related_recipts_list.reset_index(inplace=True)
+
+# %%
+### Print test of the model ----
+def print_test(x):
+    order_info = order_related_recipts_list.loc[x, ['order_id', 'product_name', 'name']]
+    print('** Order info **')
+    print(order_info)
+    print('\n')
+    print('** Products in order **')
+    print(order_info['product_name'])
+    print('\n')
+    print('** First recommended recipes **')
+    print(order_info['name'][:3])
+
+print_test(30)
 # %%
