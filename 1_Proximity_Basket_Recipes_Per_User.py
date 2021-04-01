@@ -18,9 +18,9 @@ import matplotlib.pyplot as plt
 # %%
 ## Constants ----
 # Limit of number of orders to process
-SPEED_LIMIT_ORDERS = 10000
+SPEED_LIMIT_ORDERS = 1000
 # Limit of number of recipes to process
-SPEED_LIMIT_RECIPES = 30000
+SPEED_LIMIT_RECIPES = 1000
 # Number of orders/baskets to pull similar to the requested
 NUMBER_OF_RELATED_RECIPES = 5
 # Number of dimensions of the vector annoy is going to store. 
@@ -134,8 +134,8 @@ recipes_ingredients_list = pd.merge(recipes_ingredients_list, recipes_ingredient
 
 # The `products_lemma` column is ready to be used as an input for the `Word2Vec` model. 
 products_append = products['products_lemma'].append(recipes_ingredients['ingredients_lemma'])
-# https://stackoverflow.com/a/3724558/3780957
-products_append = pd.Series([list(x) for x in set(tuple(x) for x in products_append)])
+# Remove duplicates. Alternative: https://stackoverflow.com/a/3724558/3780957
+products_append = products_append.apply(set).apply(list)
 # to define the maximun window
 window_max = max(products_append.apply(lambda x:len(x)))
 # Create the model itself
@@ -179,7 +179,8 @@ iv.build(TREE_QUERIES)
 # %%
 ### `orders lists` ----
 orders_filter = order_products_prior[order_products_prior.order_id < SPEED_LIMIT_ORDERS]
-order_baskets = orders_filter.groupby('order_id')['product_id'].apply(list)
+orders_filter = pd.merge(orders_filter, orders, on='order_id')
+order_baskets = orders_filter.groupby('user_id')['product_id'].apply(set).apply(list)
 
 order_w2v = dict()
 for index, row in tqdm(order_baskets.items()):
@@ -187,13 +188,13 @@ for index, row in tqdm(order_baskets.items()):
     for item_id in row:
         word_vector.append(pv.get_item_vector(item_id))
     order_w2v[index] = np.average(word_vector, axis=0)
-df_order_baskets = pd.DataFrame(order_baskets.items(), columns=['order_id', 'product_id'])
+df_order_baskets = pd.DataFrame(order_baskets.items(), columns=['user_id', 'product_id'])
 df_order_baskets['vectors'] = order_w2v.values()
 
 bl = AnnoyIndex(VECTOR_SIZE, metric='manhattan')
 bl.set_seed(42)
 for index, row in df_order_baskets.iterrows():
-    bl.add_item(row['order_id'], row['vectors'])
+    bl.add_item(row['user_id'], row['vectors'])
 bl.build(TREE_QUERIES)
 
 ### `recipes lists` ----
@@ -228,28 +229,28 @@ for index, row in tqdm(df_order_baskets.iterrows()):
 order_related_recipes_p = order_related_recipes
 order_related_recipes_p = order_related_recipes_p.explode('product_id')
 order_related_recipes_p = pd.merge(order_related_recipes_p, products[['product_id', 'product_name']], left_on='product_id', right_on='product_id')
-order_related_recipes_p = order_related_recipes_p.groupby('order_id')['product_name'].apply(list)
+order_related_recipes_p = order_related_recipes_p.groupby('user_id')['product_name'].apply(list)
 
 # Add recipes information
 order_related_recipes_r = order_related_recipes
 order_related_recipes_r = order_related_recipes_r.explode('recipes_related')
 order_related_recipes_r = pd.merge(order_related_recipes_r, recipes_ingredients_raw[['recipes_id', 'name']], left_on='recipes_related', right_on='recipes_id')
-order_related_recipes_r = order_related_recipes_r.groupby('order_id')['name'].apply(list)
+order_related_recipes_r = order_related_recipes_r.groupby('user_id')['name'].apply(list)
 
 # Merge the two previous
 order_related_recipes_list = order_related_recipes
-order_related_recipes_list = pd.merge(order_related_recipes_list, order_related_recipes_p, on='order_id')
-order_related_recipes_list = pd.merge(order_related_recipes_list, order_related_recipes_r, on='order_id')
+order_related_recipes_list = pd.merge(order_related_recipes_list, order_related_recipes_p, on='user_id')
+order_related_recipes_list = pd.merge(order_related_recipes_list, order_related_recipes_r, on='user_id')
 order_related_recipes_list.reset_index(inplace=True)
 
 # %%
 ### Print test of the model ----
 def print_test(x):
-    order_info = order_related_recipes_list.loc[x, ['order_id', 'product_name', 'name']]
-    print('** Order info **')
+    order_info = order_related_recipes_list.loc[x, ['user_id', 'product_name', 'name']]
+    print('** User info **')
     print(order_info)
     print('\n')
-    print('** Products in order **')
+    print('** Products purchased by user **')
     print(order_info['product_name'])
     print('\n')
     print('** First recommended recipes **')
