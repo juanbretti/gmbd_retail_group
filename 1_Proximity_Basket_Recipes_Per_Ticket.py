@@ -18,9 +18,9 @@ import matplotlib.pyplot as plt
 # %%
 ## Constants ----
 # Limit of number of orders to process
-SPEED_LIMIT_ORDERS = 10000
+SPEED_LIMIT_ORDERS = 1000
 # Limit of number of recipes to process
-SPEED_LIMIT_RECIPES = 30000
+SPEED_LIMIT_RECIPES = 3000
 # Number of orders/baskets to pull similar to the requested
 NUMBER_OF_RELATED_RECIPES = 5
 # Number of dimensions of the vector annoy is going to store. 
@@ -134,8 +134,8 @@ recipes_ingredients_list = pd.merge(recipes_ingredients_list, recipes_ingredient
 
 # The `products_lemma` column is ready to be used as an input for the `Word2Vec` model. 
 products_append = products['products_lemma'].append(recipes_ingredients['ingredients_lemma'])
-# https://stackoverflow.com/a/3724558/3780957
-products_append = pd.Series([list(x) for x in set(tuple(x) for x in products_append)])
+# Remove duplicates. Alternative: https://stackoverflow.com/a/3724558/3780957
+products_append = products_append.apply(set).apply(list)
 # to define the maximun window
 window_max = max(products_append.apply(lambda x:len(x)))
 # Create the model itself
@@ -162,19 +162,19 @@ recipes_ingredients['vectors'] = w2v_applied(recipes_ingredients, 'ingredients_l
 # bl: basket list
 # rl: recipe list
 
+def annoy_build(df, id):
+    pv = AnnoyIndex(VECTOR_SIZE, metric='manhattan') 
+    pv.set_seed(42)
+    for _, row in df.iterrows():
+        pv.add_item(row[id], row['vectors'])
+    pv.build(TREE_QUERIES)
+    return pv
+
 ### `product` ----
-pv = AnnoyIndex(VECTOR_SIZE, metric='manhattan') 
-pv.set_seed(42)
-for index, row in products.iterrows():
-    pv.add_item(row['product_id'], row['vectors'])
-pv.build(TREE_QUERIES)
+pv = annoy_build(products, 'product_id')
 
 ### `ingredients` ----
-iv = AnnoyIndex(VECTOR_SIZE, metric='manhattan') 
-iv.set_seed(42)
-for index, row in recipes_ingredients.iterrows():
-    iv.add_item(row['ingredient_id'], row['vectors'])
-iv.build(TREE_QUERIES)
+iv = annoy_build(recipes_ingredients, 'ingredient_id')
 
 # %%
 ### `orders lists` ----
@@ -190,11 +190,7 @@ for index, row in tqdm(order_baskets.items()):
 df_order_baskets = pd.DataFrame(order_baskets.items(), columns=['order_id', 'product_id'])
 df_order_baskets['vectors'] = order_w2v.values()
 
-bl = AnnoyIndex(VECTOR_SIZE, metric='manhattan')
-bl.set_seed(42)
-for index, row in df_order_baskets.iterrows():
-    bl.add_item(row['order_id'], row['vectors'])
-bl.build(TREE_QUERIES)
+bl = annoy_build(df_order_baskets, 'order_id')
 
 ### `recipes lists` ----
 recipes_list = recipes_ingredients_list.groupby('recipes_id')['ingredient_id'].apply(list)
@@ -208,11 +204,7 @@ for index, row in tqdm(recipes_list.items()):
 df_recipes_list = pd.DataFrame(recipes_list.items(), columns=['recipes_id', 'ingredient_id'])
 df_recipes_list['vectors'] = list_w2v.values()
 
-rl = AnnoyIndex(VECTOR_SIZE, metric='manhattan')
-rl.set_seed(42)
-for index, row in df_recipes_list.iterrows():
-    rl.add_item(row['recipes_id'], row['vectors'])
-rl.build(TREE_QUERIES)
+rl = annoy_build(df_recipes_list, 'recipes_id')
 
 # %%
 ## Closest Recipes (by ticket) ----
