@@ -162,13 +162,13 @@ recipes_ingredients['vectors'] = w2v_applied(recipes_ingredients, 'ingredients_l
 # bl: basket list
 # rl: recipe list
 
-def annoy_build(df, id):
-    pv = AnnoyIndex(VECTOR_SIZE, metric='manhattan') 
-    pv.set_seed(42)
+def annoy_build(df, id, metric='euclidean'):
+    m = AnnoyIndex(VECTOR_SIZE, metric=metric) 
+    m.set_seed(42)
     for _, row in df.iterrows():
-        pv.add_item(row[id], row['vectors'])
-    pv.build(TREE_QUERIES)
-    return pv
+        m.add_item(row[id], row['vectors'])
+    m.build(TREE_QUERIES)
+    return m
 
 ### `product` ----
 pv = annoy_build(products, 'product_id')
