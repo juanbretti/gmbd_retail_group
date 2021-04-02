@@ -78,8 +78,8 @@ products = pd.merge(products, aisles, on="aisle_id", how='outer')
 
 # https://stackoverflow.com/a/43898233/3780957
 # https://stackoverflow.com/a/57225427/3780957
-# Remove synonyms here in the list
-products['products_mod'] = products[['products_mod', 'aisle', 'department']].values.tolist()
+# products['products_mod'] = products[['products_mod', 'aisle', 'department']].values.tolist()
+products['products_mod'] = products['products_mod'].values.tolist()
 products['products_mod'] = products['products_mod'].apply(lambda x:list(flatten(x)))
 
 # %%
@@ -247,5 +247,12 @@ def print_test(x):
     print('** First recommended recipes **')
     print(order_info['name'][:3])
 
-print_test(30)
+print_test(100)
+
 # %%
+#### Check ingredients ----
+ingredients = recipes_ingredients_raw[recipes_ingredients_raw['name']=='i stole the idea from mirj  sesame noodles']['ingredients']
+' - '.join(map(str, ingredients))
+
+# TODO: Remove products that are not food
+# TODO: If the order has too many cleaning, remove the order?
