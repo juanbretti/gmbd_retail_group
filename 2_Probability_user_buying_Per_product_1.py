@@ -217,7 +217,7 @@ def timer(start_time=None):
         print('\n Time taken: %i hours %i minutes and %s seconds.' % (thour, tmin, round(tsec, 2)))
 
 # %%
-## Model training ---
+## Model training ----
 ###  Hyperparameter tunning XGBoost, bayesian search ----
 # https://www.kaggle.com/stuarthallows/using-xgboost-with-scikit-learn
 # https://scikit-optimize.github.io/stable/auto_examples/sklearn-gridsearchcv-replacement.html
@@ -274,11 +274,13 @@ xgb_model_bayes.fit(X_train,y_train)
 xgb.plot_importance(xgb_model_bayes)
 
 # %%
-### Prediction ----
+## Probability of a specific user buying a recipe ----
+### Buy predicting each product individually ----
+
 # Reformat for the prediction
 ingredients_vector = vector_to_df(recipes_ingredients, 'ingredient_id', 'vectors', 'product')
 
-def probability_user_buying_recipe(user_test):
+def probability_each_product_individually(user_test):
     # Cross join of `user` and `ingredients`
     # https://stackoverflow.com/a/48255115/3780957
     user_test_ingredient_cross_join = user_vector[user_vector['user_id']==user_test].assign(foo=1).merge(ingredients_vector.assign(foo=1)).drop('foo', 1)
@@ -293,5 +295,29 @@ def probability_user_buying_recipe(user_test):
     # List of recipes sorted by average probability
     return user_test_recipes.groupby(['name', 'recipes_id'])['probability_reorder'].mean().sort_values(ascending=False)
 
-probability_user_buying_recipe(204484)
+probability_each_product_individually(204484)
+# %%
+### By predicting the whole recipe ----
+
+# Reformat for the prediction
+recipes_ingredients_vector = pd.merge(recipes_ingredients_list, recipes_ingredients, on='ingredient_id')
+recipes_ingredients_vector = recipes_ingredients_vector.groupby(['name', 'recipes_id'])['vectors'].apply(list)
+recipes_ingredients_vector_ = recipes_ingredients_vector.apply(lambda x: tuple(np.average(x, axis=0)))
+recipes_ingredients_vector_ = vector_to_df(recipes_ingredients_vector_.reset_index(), 'recipes_id', 'vectors', 'product')
+
+def probability_whole_recipe(user_test):
+    # Cross join of `user` and `ingredients`
+    user_test_ingredient_cross_join = user_vector[user_vector['user_id']==user_test].assign(foo=1).merge(recipes_ingredients_vector_.assign(foo=1)).drop('foo', 1)
+    # Prepare data and predict
+    columns_to_exclude = ['recipes_id', 'user_id']
+    data = user_test_ingredient_cross_join.drop(columns_to_exclude, axis=1)
+    # Final prediction
+    user_test_predict = user_test_ingredient_cross_join[['recipes_id', 'user_id']].copy()
+    user_test_predict['probability_reorder'] = xgb_model_bayes.predict(data)
+    # Merge original recipes with the user probability of `reorder`
+    user_test_recipes = pd.merge(recipes_ingredients_vector.reset_index(), user_test_predict, on='recipes_id')
+    # List of recipes sorted by average probability
+    return user_test_recipes.groupby(['name', 'recipes_id'])['probability_reorder'].mean().sort_values(ascending=False)
+
+probability_whole_recipe(204484)
 # %%
