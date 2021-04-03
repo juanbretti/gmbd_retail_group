@@ -1,6 +1,5 @@
 # %%
 ## Import libraries ----
-from sys import prefix
 import numpy as np
 from numpy.core.fromnumeric import product, sort
 from numpy.lib.function_base import average
@@ -11,13 +10,13 @@ from gensim.models import Word2Vec
 import nltk
 nltk.download('wordnet')
 
+from sys import prefix
 from tqdm import tqdm
 import zipfile as zp
 
 import xgboost as xgb
 from skopt import BayesSearchCV
-from sklearn.model_selection import cross_val_score
-
+from sklearn.model_selection import cross_val_score, train_test_split
 import matplotlib.pyplot as plt
 
 # %%
@@ -224,21 +223,19 @@ order_fe = order_fe.merge(temp, on=['user_id'])
 ## Split the data ---
 columns_to_exclude = ['order_id', 'product_id', 'user_id', 'aisle_id', 'department_id', 'eval_set']
 data = order_merged.drop(columns_to_exclude, axis=1)
-X = data.drop('reordered', axis=1)
-y = data['reordered']
+
+### Split dataset ----
+data_train, data_test = train_test_split(data, test_size=0.3, random_state=42, stratify=data['reordered'])
+# Train
+X_train = data_train.drop('reordered', axis=1)
+y_train = data_train['reordered']
+# Test
+X_test = data_test.drop('reordered', axis=1)
+y_test = data_test['reordered']
 
 # %%
 def timer(start_time=None):
-    """Create a 'timer' object to measure execution time 
-
-    Args:
-        start_time (datetime[64], optional): End time when set. Defaults to None.
-
-    Returns:
-        str: Time elapsed since execution
-    """
     from datetime import datetime
-
     if not start_time:
         start_time = datetime.now()
         return start_time
@@ -257,11 +254,11 @@ def timer(start_time=None):
 
 params = {
     'max_depth': list(range(3,10,2)),
-    # 'min_child_weight': list(range(1,6,2)),
-    # 'gamma': [i/10.0 for i in range(0,5)],
-    # 'subsample': [i/10.0 for i in range(6,10)],
-    # 'colsample_bytree':[i/10.0 for i in range(6,10)],
-    # 'reg_alpha': [1e-5, 1e-2, 0.1, 1, 100]
+    'min_child_weight': list(range(1,6,2)),
+    'gamma': [i/10.0 for i in range(0,5)],
+    'subsample': [i/10.0 for i in range(6,10)],
+    'colsample_bytree':[i/10.0 for i in range(6,10)],
+    'reg_alpha': [1e-5, 1e-2, 0.1, 1, 100]
 }
 
 folds = 3
@@ -286,9 +283,8 @@ xgb_model_search_bayes = BayesSearchCV(xgb_model_bayes, search_spaces=params, n_
 
 # Start the grid search
 start_time = timer(None) # timing starts from this point for "start_time" variable
-xgb_model_search_bayes.fit(X, y)
+xgb_model_search_bayes.fit(X_train, y_train)
 timer(start_time) # timing ends here for "start_time" variable
-
 
 # %%
 ### Performance ----
@@ -296,16 +292,17 @@ timer(start_time) # timing ends here for "start_time" variable
 # https://scikit-learn.org/stable/modules/model_evaluation.html
 
 xgb_model_after_bayes_search = xgb_model_search_bayes.best_estimator_
-xgb_scores_bayes_tunned = cross_val_score(xgb_model_after_bayes_search, X, y, scoring='neg_mean_squared_error', cv=10)
+xgb_scores_bayes_tunned = cross_val_score(xgb_model_after_bayes_search, X_test, y_test, scoring='neg_mean_squared_error', cv=10)
 print("neg_mean_squared_error: %0.4f (+/- %0.2f)" % (np.median(xgb_scores_bayes_tunned), np.std(xgb_scores_bayes_tunned)))
 
 # %%
 ### Prediction ----
-y_pred = rfc.fit(X_train, y_train).predict(X_test)
+# y_pred = rfc.fit(X_train, y_train).predict(X_test)
 
 # %%
 ### Feature importance ----
-plt.rcParams['figure.figsize'] = [10, 10]
-xgb_model_bayes.fit(X,y)
+plt.rcParams['figure.figsize'] = [15, 15]
+xgb_model_bayes.fit(X_train,y_train)
 xgb.plot_importance(xgb_model_bayes)
+
 # %%
