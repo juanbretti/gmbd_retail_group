@@ -16,6 +16,9 @@ import zipfile as zp
 
 import xgboost as xgb
 from skopt import BayesSearchCV
+from sklearn.model_selection import cross_val_score
+
+import matplotlib.pyplot as plt
 
 # %%
 ## Constants ----
@@ -245,7 +248,8 @@ def timer(start_time=None):
         print('\n Time taken: %i hours %i minutes and %s seconds.' % (thour, tmin, round(tsec, 2)))
 
 # %%
-## Hyperparameter tunning XGBoost, bayesian search ----
+## Model training ---
+###  Hyperparameter tunning XGBoost, bayesian search ----
 # https://www.kaggle.com/stuarthallows/using-xgboost-with-scikit-learn
 # https://scikit-optimize.github.io/stable/auto_examples/sklearn-gridsearchcv-replacement.html
 # https://neptune.ai/blog/scikit-optimize
@@ -261,7 +265,7 @@ params = {
 }
 
 folds = 3
-param_comb = 100
+param_comb = 10
 cv_ = 3
 
 # Build the model
@@ -285,42 +289,23 @@ start_time = timer(None) # timing starts from this point for "start_time" variab
 xgb_model_search_bayes.fit(X, y)
 timer(start_time) # timing ends here for "start_time" variable
 
-# %%
-
-
-y_pred = rfc.fit(X_train, y_train).predict(X_test)
-
-
-def model_accuracy(model, df=df_test, decimals=2):
-    """Print model `accuracy`
-
-    Args:
-        model (object): Sklearn model
-        y_pred (Series, optional): Dependent variable. Defaults to y_pred.
-        decimals (int, optional): Number of decimals to print the `accuracy`. Defaults to 2.
-    """
-    X_validation = df.drop([target_encoded], axis=1)
-    y_validation = df[target_encoded]
-    y_pred = model.predict(X_validation)
-    print(model)
-    print(f'Accuracy: {(accuracy_score(y_validation, y_pred)*100).round(decimals)}%')
-
-
 
 # %%
-
-# https://stackoverflow.com/a/45074887/3780957
-# Checking the accuracy of the best model
+### Performance ----
+# Checking the performance of the best model
+# https://scikit-learn.org/stable/modules/model_evaluation.html
 
 xgb_model_after_bayes_search = xgb_model_search_bayes.best_estimator_
-xgb_scores_bayes_tunned = cross_val_score(xgb_model_after_bayes_search, X, y, scoring='accuracy', cv=10)
-print("Accuracy: %0.4f (+/- %0.2f)" % (np.median(xgb_scores_bayes_tunned), np.std(xgb_scores_bayes_tunned)))
-plot_scores([xgb_scores_bayes_tunned, knn_scores, rf_score_after_bayes, rf_model_after_search_scores, rf_scores, lr_scores], \
-    ['XGB bayes', 'KNN', 'RF bayes', 'RF grid', 'RF', 'LR'])
-
+xgb_scores_bayes_tunned = cross_val_score(xgb_model_after_bayes_search, X, y, scoring='neg_mean_squared_error', cv=10)
+print("neg_mean_squared_error: %0.4f (+/- %0.2f)" % (np.median(xgb_scores_bayes_tunned), np.std(xgb_scores_bayes_tunned)))
 
 # %%
+### Prediction ----
+y_pred = rfc.fit(X_train, y_train).predict(X_test)
 
-plt.rcParams['figure.figsize'] = [5, 5]
-xg_reg3.fit(X_train,y_train)
-xgb.plot_importance(xg_reg3)
+# %%
+### Feature importance ----
+plt.rcParams['figure.figsize'] = [10, 10]
+xgb_model_bayes.fit(X,y)
+xgb.plot_importance(xgb_model_bayes)
+# %%
