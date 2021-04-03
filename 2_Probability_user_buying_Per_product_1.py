@@ -76,12 +76,6 @@ products['products_mod'] = products['products_mod'].str.replace('\W', ' ')
 # Split products into terms: Tokenize.
 products['products_mod'] = products['products_mod'].str.split()
 
-# https://stackoverflow.com/a/43898233/3780957
-# https://stackoverflow.com/a/57225427/3780957
-# products['products_mod'] = products[['products_mod', 'aisle', 'department']].values.tolist()
-# products['products_mod'] = products['products_mod'].values.tolist()
-# products['products_mod'] = products['products_mod'].apply(lambda x:list(flatten(x)))
-
 # %%
 # Steam and lemmatisation of the product name
 # https://stackoverflow.com/a/24663617/3780957
@@ -160,22 +154,22 @@ aisles['vectors'] = w2v_applied(aisles, 'aisle', 'aisle_id')
 
 # %%
 ## Aggregate list to average ----
-def list_to_average(df, products, product_id):
-    list = df.apply(lambda row: [products.loc[products[product_id]==item, 'vectors'].to_list()[0] for item in row])
-    list = list.apply(lambda x: tuple(np.average(x, axis=0)))
-    return list
 
 ### `orders lists` ----
 orders_filter = order_products_prior[order_products_prior.order_id < SPEED_LIMIT_ORDERS]
 orders_filter = pd.merge(orders_filter, orders, on='order_id')
+# Replace with the products
+orders_filter_user = orders_filter.groupby(['order_id', 'user_id']).agg({'product_id':lambda x: list(set(x))})
+orders_filter_user = orders_filter_user.reset_index()
+orders_filter_user['vectors'] = orders_filter_user['product_id'].apply(lambda row: [products.loc[products['product_id']==item, 'vectors'].to_list()[0] for item in row])
+orders_filter_user['vectors'] = orders_filter_user['vectors'].apply(lambda x: tuple(np.average(x, axis=0)))
+# Calculate mean `reordered`
+orders_filter_reordered = orders_filter.groupby(['user_id', 'product_id']).agg({'reordered': np.average})
+# orders_filter_reordered['reordered'].value_counts()
 
 ### `users lists` ----
-user_baskets = orders_filter.groupby('user_id')['product_id'].apply(set).apply(list)
-df_user_baskets = list_to_average(user_baskets, products, 'product_id')
-
-### `recipes lists` ----
-recipes_list = recipes_ingredients_list.groupby('recipes_id')['ingredient_id'].apply(set).apply(list)
-df_recipes_list = list_to_average(recipes_list, recipes_ingredients, 'ingredient_id')
+user_baskets = orders_filter_user.groupby('user_id')['vectors'].apply(list)
+user_baskets_average = user_baskets.apply(lambda x: tuple(np.average(x, axis=0)))
 
 # %%
 ## Add product and user vectors ----
@@ -183,57 +177,27 @@ def vector_to_df(df, id, vectors, name, vector_size=VECTOR_SIZE):
     temp = df.loc[:, [id, vectors]]
     return pd.DataFrame(temp[vectors].tolist(), index=temp[id], columns=[f'{name}_vector_{x}' for x in range(0,vector_size)]).reset_index()
 
-user_vector = vector_to_df(df_user_baskets.reset_index(), 'user_id', 'product_id', 'user')
+user_vector = vector_to_df(user_baskets_average.reset_index(), 'user_id', 'vectors', 'user')
 product_vector = vector_to_df(products, 'product_id', 'vectors', 'product')
 aisle_vector = vector_to_df(aisles, 'aisle_id', 'vectors', 'aisle')
 department_vector = vector_to_df(departments, 'department_id', 'vectors', 'department')
 
-product_vector = pd.merge(product_vector, products[['product_id', 'aisle_id', 'department_id']], on='product_id')
-product_vector = pd.merge(product_vector, aisle_vector, on='aisle_id')
-product_vector = pd.merge(product_vector, department_vector, on='department_id')
+# product_vector = pd.merge(product_vector, products[['product_id', 'aisle_id', 'department_id']], on='product_id')
+# product_vector = pd.merge(product_vector, aisle_vector, on='aisle_id')
+# product_vector = pd.merge(product_vector, department_vector, on='department_id')
 
-order_merged = orders_filter
+order_merged = orders_filter_reordered.reset_index()
 order_merged = pd.merge(order_merged, user_vector, on='user_id')
 order_merged = pd.merge(order_merged, product_vector, on='product_id')
 
 # %%
-## Feature engineering ----
-order_fe = order_merged
-
-# Feature days
-order_fe['fe_weekends'] = order_fe['order_dow'].apply(lambda x: 1 if x in [0,6] else 0)
-order_fe['fe_working_hours'] = order_fe['order_hour_of_day'].apply(lambda x: 1 if x in range(7,21) else 0)
-# Feature maximum number of items in an order
-temp = order_fe.groupby(['order_id', 'user_id'])['add_to_cart_order'].apply(max).rename('fe_max_add_to_cart_order')
-order_fe = order_fe.merge(temp, on=['order_id', 'user_id'])
-# Feature maximun number of departments and aisles in an order
-temp = order_fe.groupby(['order_id', 'user_id'])['department_id'].nunique().rename('fe_department_nunique')
-order_fe = order_fe.merge(temp, on=['order_id', 'user_id'])
-temp = order_fe.groupby(['order_id', 'user_id'])['aisle_id'].nunique().rename('fe_aisle_nunique')
-order_fe = order_fe.merge(temp, on=['order_id', 'user_id'])
-# Feature maximun number of orders per user
-temp = order_fe.groupby(['user_id'])['order_number'].apply(max).rename('fe_order_number_max')
-order_fe = order_fe.merge(temp, on=['user_id'])
-# TODO: days_since_prior_order, calcular promedio por usuario o producto??
-
-# %%
-# https://stackoverflow.com/questions/23664877/pandas-equivalent-of-oracle-lead-lag-function
-# TODO: Agregar lag en reordered
-# order_merged['reordered_lag_1'] = df.groupby(['Group'])['Data'].shift(1)
-
-
-# %%
-
-temp = order_merged.groupby(['product_id', 'user_id'])['reordered'].mean()
-# order_products_prior.merge(orders, on='order_id').groupby(['product_id', 'user_id', 'reordered']).nunique().value_counts()
-
-# %%
 ## Split the data ---
-columns_to_exclude = ['order_id', 'product_id', 'user_id', 'aisle_id', 'department_id', 'eval_set']
+# columns_to_exclude = ['product_id', 'user_id', 'aisle_id', 'department_id']
+columns_to_exclude = ['product_id', 'user_id']
 data = order_merged.drop(columns_to_exclude, axis=1)
 
 ### Split dataset ----
-data_train, data_test = train_test_split(data, test_size=0.3, random_state=42, stratify=data['reordered'])
+data_train, data_test = train_test_split(data, test_size=0.2, random_state=42, stratify=data['reordered'])
 # Train
 X_train = data_train.drop('reordered', axis=1)
 y_train = data_train['reordered']
@@ -304,13 +268,30 @@ xgb_scores_bayes_tunned = cross_val_score(xgb_model_after_bayes_search, X_test, 
 print("neg_mean_squared_error: %0.4f (+/- %0.2f)" % (np.median(xgb_scores_bayes_tunned), np.std(xgb_scores_bayes_tunned)))
 
 # %%
-### Prediction ----
-# y_pred = rfc.fit(X_train, y_train).predict(X_test)
-
-# %%
 ### Feature importance ----
 plt.rcParams['figure.figsize'] = [15, 15]
 xgb_model_bayes.fit(X_train,y_train)
 xgb.plot_importance(xgb_model_bayes)
 
+# %%
+### Prediction ----
+# Reformat for the prediction
+ingredients_vector = vector_to_df(recipes_ingredients, 'ingredient_id', 'vectors', 'product')
+
+def probability_user_buying_recipe(user_test):
+    # Cross join of `user` and `ingredients`
+    # https://stackoverflow.com/a/48255115/3780957
+    user_test_ingredient_cross_join = user_vector[user_vector['user_id']==user_test].assign(foo=1).merge(ingredients_vector.assign(foo=1)).drop('foo', 1)
+    # Prepare data and predict
+    columns_to_exclude = ['ingredient_id', 'user_id']
+    data = user_test_ingredient_cross_join.drop(columns_to_exclude, axis=1)
+    # Final prediction
+    user_test_predict = user_test_ingredient_cross_join[['ingredient_id', 'user_id']].copy()
+    user_test_predict['probability_reorder'] = xgb_model_bayes.predict(data)
+    # Merge original recipes with the user probability of `reorder`
+    user_test_recipes = pd.merge(recipes_ingredients_list, user_test_predict, on='ingredient_id')
+    # List of recipes sorted by average probability
+    return user_test_recipes.groupby(['name', 'recipes_id'])['probability_reorder'].mean().sort_values(ascending=False)
+
+probability_user_buying_recipe(204484)
 # %%
