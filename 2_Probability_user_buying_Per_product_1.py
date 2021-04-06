@@ -63,7 +63,7 @@ departments = pd.read_csv(zf1.open('departments.csv'))
 zf1 = zp.ZipFile("data/aisles.csv.zip")
 aisles = pd.read_csv(zf1.open('aisles.csv'))
 
-zf1 = zp.ZipFile("data/RAW_recipes.csv.zip")
+zf1 = zp.ZipFile("data/recipes/RAW_recipes.csv.zip")
 recipes = pd.read_csv(zf1.open('RAW_recipes.csv'))
 
 # %%
@@ -182,6 +182,9 @@ product_vector = vector_to_df(products, 'product_id', 'vectors', 'product')
 aisle_vector = vector_to_df(aisles, 'aisle_id', 'vectors', 'aisle')
 department_vector = vector_to_df(departments, 'department_id', 'vectors', 'department')
 
+# TODO: Agregar aisle and department
+
+
 # product_vector = pd.merge(product_vector, products[['product_id', 'aisle_id', 'department_id']], on='product_id')
 # product_vector = pd.merge(product_vector, aisle_vector, on='aisle_id')
 # product_vector = pd.merge(product_vector, department_vector, on='department_id')
@@ -222,7 +225,7 @@ def timer(start_time=None):
 # https://www.kaggle.com/stuarthallows/using-xgboost-with-scikit-learn
 # https://scikit-optimize.github.io/stable/auto_examples/sklearn-gridsearchcv-replacement.html
 # https://neptune.ai/blog/scikit-optimize
-# C:\Users\juanb\OneDrive\GMBD\2020-06-29 - TERM 2\MACHINE LEARNING II (MBD-EN-BL2020J-1_32R202_380379)\Group assignment\!Delivery\ml_ii_group_f.ipynb
+# GMBD\2020-06-29 - TERM 2\MACHINE LEARNING II (MBD-EN-BL2020J-1_32R202_380379)\Group assignment\!Delivery\ml_ii_group_f.ipynb
 
 params = {
     'max_depth': list(range(3,10,2)),
@@ -296,6 +299,7 @@ def probability_each_product_individually(user_test):
     return user_test_recipes.groupby(['name', 'recipes_id'])['probability_reorder'].mean().sort_values(ascending=False)
 
 probability_each_product_individually(204484)
+
 # %%
 ### By predicting the whole recipe ----
 
@@ -321,3 +325,13 @@ def probability_whole_recipe(user_test):
 
 probability_whole_recipe(204484)
 # %%
+
+
+# TODO: Quitar los productos que no son comestibles
+
+# TODO: Agregar features de usuario
+# TODO: Cantidad de productos por orden del usuario
+# TODO: Horario de compra
+# TODO: Dia habitual de compra
+# TODO: Agregar receta promedio por usuario
+# Por cada basket, podría calcular la receta para el basket

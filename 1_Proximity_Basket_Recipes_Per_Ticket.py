@@ -255,4 +255,4 @@ ingredients = recipes_ingredients_raw[recipes_ingredients_raw['name']=='i stole 
 ' - '.join(map(str, ingredients))
 
 # TODO: Remove products that are not food
-# TODO: If the order has too many cleaning, remove the order?
+# TODO: If the order has too many "cleaning", remove the order?
