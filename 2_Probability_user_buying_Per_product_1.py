@@ -240,7 +240,7 @@ temp_product = order_fe.groupby(['product_id', 'user_id']).agg(
 )
 
 temp_product = temp_product.groupby(['user_id']).agg({
-    'fe_days_since_prior_order':'mean',
+    'fe_days_since_prior_order': 'mean',
     'fe_mode_aisle': lambda grp: mode_vector(grp, df=aisles, index='aisle_id'),
     'fe_mode_department': lambda grp: mode_vector(grp, df=departments, index='department_id'),
 })
@@ -407,9 +407,10 @@ def probability_whole_recipe(user_test, user_merged=user_merged):
     # Merge original recipes with the user probability of `reorder`
     user_test_recipes = pd.merge(recipes_ingredients_vector.reset_index(), user_test_predict, on='recipes_id')
     # List of recipes sorted by average probability
-    return user_test_recipes.groupby(['name', 'recipes_id'])['probability_reorder'].mean().sort_values(ascending=False)
+    return user_test_recipes[['name', 'recipes_id', 'probability_reorder']].sort_values(by='probability_reorder', ascending=False)
 
 probability_whole_recipe(204484)
+
 # %%
 
 # TODO: Quitar los productos que no son comestibles
