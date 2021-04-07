@@ -72,9 +72,17 @@ recipes = pd.read_csv(zf1.open('RAW_recipes.csv'))
 # Make everything lowercase.
 products['products_mod'] = products['product_name'].str.lower()
 # Clean special characters.
-products['products_mod'] = products['products_mod'].str.replace('\W', ' ')
+products['products_mod'] = products['products_mod'].str.replace('\W', ' ', regex=True)
 # Split products into terms: Tokenize.
 products['products_mod'] = products['products_mod'].str.split()
+
+# Merge the department and aisle names into the dataframe. 
+products = pd.merge(products, departments, on="department_id", how='outer')
+products = pd.merge(products, aisles, on="aisle_id", how='outer')
+
+# Append aisle and department
+products['products_mod'] = products[['products_mod', 'aisle', 'department']].values.tolist()
+products['products_mod'] = products['products_mod'].apply(lambda x:list(flatten(x)))
 
 # %%
 # Steam and lemmatisation of the product name
@@ -108,7 +116,7 @@ recipes_ingredients_raw['ingredients'] = recipes_ingredients_raw['ingredients'].
 
 recipes_ingredients_list = recipes_ingredients_raw.explode('ingredients')
 recipes_ingredients_list['ingredients'] = recipes_ingredients_list['ingredients'].str.lower()
-recipes_ingredients_list['ingredients'] = recipes_ingredients_list['ingredients'].str.replace('\W', ' ')
+recipes_ingredients_list['ingredients'] = recipes_ingredients_list['ingredients'].str.replace('\W', ' ', regex=True)
 
 # Dataframe of unique values
 recipes_ingredients = pd.DataFrame(recipes_ingredients_list['ingredients'].unique(), columns=['ingredient_name'])
@@ -172,30 +180,108 @@ user_baskets = orders_filter_user.groupby('user_id')['vectors'].apply(list)
 user_baskets_average = user_baskets.apply(lambda x: tuple(np.average(x, axis=0)))
 
 # %%
+## Feature engineering ----
+order_fe = orders_filter
+order_fe = pd.merge(order_fe, products, on='product_id')
+
+# Feature days. Considering 0 and 6 are Sunday and Saturday
+order_fe['fe_weekends_flag'] = order_fe['order_dow'].apply(lambda x: 1 if x in [0,6] else 0)
+# Working hours from 7 to 20
+order_fe['fe_working_hours_flag'] = order_fe['order_hour_of_day'].apply(lambda x: 1 if x in range(7,21) else 0)
+
+def mode(lst):
+    lst = lst.to_list()
+    return max(set(lst), key=lst.count)
+
+def mode_vector(lst, df, index):
+    id = mode(lst)
+    return df.loc[df[index]==id, 'vectors']
+
+# Aggregation per order
+temp_order = order_fe.groupby(['order_id', 'user_id']).agg(
+    # Feature maximum number of items in an order 
+    fe_max_add_to_cart_order = ('add_to_cart_order', 'max'),
+    # Feature maximum number of orders from the user
+    fe_max_order_number = ('order_number', 'max'),
+    # Feature maximun number of departments and aisles in an order
+    fe_department_nunique = ('department_id', 'nunique'),
+    fe_aisle_nunique = ('aisle_id', 'nunique'),
+    # Averages of the previous calculations
+    fe_average_weekends = ('fe_weekends_flag', 'mean'),
+    fe_working_hours = ('fe_working_hours_flag', 'mean'),
+    # Average time of the purchase
+    fe_mean_hour_of_day = ('order_hour_of_day', 'mean'),
+    # Mode of day of the week
+    fe_mode_dow = ('order_dow', lambda grp: mode(grp)),
+    # Mode of hour
+    fe_mode_hour_of_day = ('order_hour_of_day', lambda grp: mode(grp))
+)
+
+temp_order = temp_order.groupby(['user_id']).agg({
+    'fe_max_add_to_cart_order':'max',
+    'fe_max_order_number': 'max',
+    'fe_department_nunique': 'mean',
+    'fe_aisle_nunique': 'mean',
+    'fe_average_weekends': 'mean',
+    'fe_working_hours': 'mean',
+    'fe_mean_hour_of_day': 'mean',
+    'fe_mode_dow': lambda grp: mode(grp),
+    'fe_mode_hour_of_day': lambda grp: mode(grp)
+})
+
+# Aggregation per product
+temp_product = order_fe.groupby(['product_id', 'user_id']).agg(
+    # Average days since prior order
+    fe_days_since_prior_order = ('days_since_prior_order', 'mean'),
+    # Mode aisle per user
+    fe_mode_aisle = ('aisle_id', 'mean'),
+    # Mode department per user
+    fe_mode_department = ('department_id', 'mean'),
+)
+
+temp_product = temp_product.groupby(['user_id']).agg({
+    'fe_days_since_prior_order':'mean',
+    'fe_mode_aisle': lambda grp: mode_vector(grp, df=aisles, index='aisle_id'),
+    'fe_mode_department': lambda grp: mode_vector(grp, df=departments, index='department_id'),
+})
+
+order_fe = temp_order.join(temp_product)
+# order_fe.columns
+
+# %%
 ## Add product and user vectors ----
 def vector_to_df(df, id, vectors, name, vector_size=VECTOR_SIZE):
     temp = df.loc[:, [id, vectors]]
     return pd.DataFrame(temp[vectors].tolist(), index=temp[id], columns=[f'{name}_vector_{x}' for x in range(0,vector_size)]).reset_index()
 
 user_vector = vector_to_df(user_baskets_average.reset_index(), 'user_id', 'vectors', 'user')
+fe_mode_aisle_vector = vector_to_df(order_fe.reset_index(), 'user_id', 'fe_mode_aisle', 'fe_mode_aisle')
+fe_mode_department = vector_to_df(order_fe.reset_index(), 'user_id', 'fe_mode_department', 'fe_mode_department')
+
 product_vector = vector_to_df(products, 'product_id', 'vectors', 'product')
-aisle_vector = vector_to_df(aisles, 'aisle_id', 'vectors', 'aisle')
-department_vector = vector_to_df(departments, 'department_id', 'vectors', 'department')
-
-# TODO: Agregar aisle and department
-
+# aisle_vector = vector_to_df(aisles, 'aisle_id', 'vectors', 'aisle')
+# department_vector = vector_to_df(departments, 'department_id', 'vectors', 'department')
 
 # product_vector = pd.merge(product_vector, products[['product_id', 'aisle_id', 'department_id']], on='product_id')
 # product_vector = pd.merge(product_vector, aisle_vector, on='aisle_id')
 # product_vector = pd.merge(product_vector, department_vector, on='department_id')
 
+user_merged = user_vector
+user_merged = pd.merge(user_merged, fe_mode_aisle_vector, on='user_id')
+user_merged = pd.merge(user_merged, fe_mode_department, on='user_id')
+
+temp = order_fe[['fe_max_add_to_cart_order', 'fe_max_order_number', 'fe_department_nunique', 'fe_aisle_nunique', 'fe_average_weekends', 'fe_working_hours', 'fe_mean_hour_of_day', 'fe_mode_dow', 'fe_mode_hour_of_day', 'fe_days_since_prior_order']]
+user_merged = pd.merge(user_merged, temp, on='user_id')
+
 order_merged = orders_filter_reordered.reset_index()
-order_merged = pd.merge(order_merged, user_vector, on='user_id')
+order_merged = pd.merge(order_merged, user_merged, on='user_id')
 order_merged = pd.merge(order_merged, product_vector, on='product_id')
+
+# List of columns at the dataset
+# print('\n'.join(str(x) for x in order_merged.columns))
 
 # %%
 ## Split the data ---
-# columns_to_exclude = ['product_id', 'user_id', 'aisle_id', 'department_id']
 columns_to_exclude = ['product_id', 'user_id']
 data = order_merged.drop(columns_to_exclude, axis=1)
 
@@ -283,10 +369,10 @@ xgb.plot_importance(xgb_model_bayes)
 # Reformat for the prediction
 ingredients_vector = vector_to_df(recipes_ingredients, 'ingredient_id', 'vectors', 'product')
 
-def probability_each_product_individually(user_test):
+def probability_each_product_individually(user_test, user_merged=user_merged):
     # Cross join of `user` and `ingredients`
     # https://stackoverflow.com/a/48255115/3780957
-    user_test_ingredient_cross_join = user_vector[user_vector['user_id']==user_test].assign(foo=1).merge(ingredients_vector.assign(foo=1)).drop('foo', 1)
+    user_test_ingredient_cross_join = user_merged[user_merged['user_id']==user_test].assign(foo=1).merge(ingredients_vector.assign(foo=1)).drop('foo', 1)
     # Prepare data and predict
     columns_to_exclude = ['ingredient_id', 'user_id']
     data = user_test_ingredient_cross_join.drop(columns_to_exclude, axis=1)
@@ -309,9 +395,9 @@ recipes_ingredients_vector = recipes_ingredients_vector.groupby(['name', 'recipe
 recipes_ingredients_vector_ = recipes_ingredients_vector.apply(lambda x: tuple(np.average(x, axis=0)))
 recipes_ingredients_vector_ = vector_to_df(recipes_ingredients_vector_.reset_index(), 'recipes_id', 'vectors', 'product')
 
-def probability_whole_recipe(user_test):
+def probability_whole_recipe(user_test, user_merged=user_merged):
     # Cross join of `user` and `ingredients`
-    user_test_ingredient_cross_join = user_vector[user_vector['user_id']==user_test].assign(foo=1).merge(recipes_ingredients_vector_.assign(foo=1)).drop('foo', 1)
+    user_test_ingredient_cross_join = user_merged[user_merged['user_id']==user_test].assign(foo=1).merge(recipes_ingredients_vector_.assign(foo=1)).drop('foo', 1)
     # Prepare data and predict
     columns_to_exclude = ['recipes_id', 'user_id']
     data = user_test_ingredient_cross_join.drop(columns_to_exclude, axis=1)
@@ -326,12 +412,6 @@ def probability_whole_recipe(user_test):
 probability_whole_recipe(204484)
 # %%
 
-
 # TODO: Quitar los productos que no son comestibles
-
-# TODO: Agregar features de usuario
-# TODO: Cantidad de productos por orden del usuario
-# TODO: Horario de compra
-# TODO: Dia habitual de compra
 # TODO: Agregar receta promedio por usuario
 # Por cada basket, podría calcular la receta para el basket
