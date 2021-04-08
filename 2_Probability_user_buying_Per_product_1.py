@@ -39,6 +39,11 @@ TSNE_SAMPLE_SIZE = 1000
 THRESHOLD_SUPPORT = 1
 # Threshold for the maximun number of products to bring
 THRESHOLD_TOP = 100
+# Hyper parameter tunning
+TUNNING_TEST_SIZE=0.2
+TUNNING_FOLDS = 3
+TUNNING_PARAM_COMB = 10
+TUNNING_CV = 3
 
 # %%
 ## Data load ----
@@ -286,7 +291,7 @@ columns_to_exclude = ['product_id', 'user_id']
 data = order_merged.drop(columns_to_exclude, axis=1)
 
 ### Split dataset ----
-data_train, data_test = train_test_split(data, test_size=0.2, random_state=42, stratify=data['reordered'])
+data_train, data_test = train_test_split(data, test_size=TUNNING_TEST_SIZE, random_state=42, stratify=data['reordered'])
 # Train
 X_train = data_train.drop('reordered', axis=1)
 y_train = data_train['reordered']
@@ -322,10 +327,6 @@ params = {
     'reg_alpha': [1e-5, 1e-2, 0.1, 1, 100]
 }
 
-folds = 3
-param_comb = 10
-cv_ = 3
-
 # Build the model
 xgb_model_bayes = xgb.XGBRegressor(
     learning_rate = 0.3,
@@ -340,7 +341,7 @@ xgb_model_bayes = xgb.XGBRegressor(
     random_state = 42)
 
 # Build the search space
-xgb_model_search_bayes = BayesSearchCV(xgb_model_bayes, search_spaces=params, n_iter=param_comb, scoring='neg_mean_squared_error', n_jobs=-1, cv=cv_, verbose=3, random_state=42)
+xgb_model_search_bayes = BayesSearchCV(xgb_model_bayes, search_spaces=params, n_iter=TUNNING_PARAM_COMB, scoring='neg_mean_squared_error', n_jobs=-1, cv=TUNNING_CV, verbose=3, random_state=42)
 
 # Start the grid search
 start_time = timer(None) # timing starts from this point for "start_time" variable
@@ -353,7 +354,7 @@ timer(start_time) # timing ends here for "start_time" variable
 # https://scikit-learn.org/stable/modules/model_evaluation.html
 
 xgb_model_after_bayes_search = xgb_model_search_bayes.best_estimator_
-xgb_scores_bayes_tunned = cross_val_score(xgb_model_after_bayes_search, X_test, y_test, scoring='neg_mean_squared_error', cv=10)
+xgb_scores_bayes_tunned = cross_val_score(xgb_model_after_bayes_search, X_test, y_test, scoring='neg_mean_squared_error', cv=TUNNING_CV)
 print("neg_mean_squared_error: %0.4f (+/- %0.2f)" % (np.median(xgb_scores_bayes_tunned), np.std(xgb_scores_bayes_tunned)))
 
 # %%
