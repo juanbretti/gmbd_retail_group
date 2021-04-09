@@ -414,6 +414,11 @@ probability_whole_recipe(204484)
 
 # %%
 
-# TODO: Quitar los productos que no son comestibles
-# TODO: Agregar receta promedio por usuario
-# Por cada basket, podría calcular la receta para el basket
+# TODO: Renombrar: Train y Predict
+# TODO: Guardar el modelo
+# TODO: Hacer un plot
+# TODO: Poner un listado de los usuarios que puedo consultar
+# TODO: Recomendar los pimeros ##
+# TODO: Recomendar por los dos métodos
+
+
