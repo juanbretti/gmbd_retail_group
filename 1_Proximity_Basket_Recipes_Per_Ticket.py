@@ -76,10 +76,14 @@ products['products_mod'] = products['products_mod'].str.split()
 products = pd.merge(products, departments, on="department_id", how='outer')
 products = pd.merge(products, aisles, on="aisle_id", how='outer')
 
+#Remove products that are not food
+no_food_dep = ['personal care', 'household', 'babies', 'pets']
+products = products[~products.department.isin(no_food_dep)]
+
 # https://stackoverflow.com/a/43898233/3780957
 # https://stackoverflow.com/a/57225427/3780957
-# products['products_mod'] = products[['products_mod', 'aisle', 'department']].values.tolist()
-products['products_mod'] = products['products_mod'].values.tolist()
+products['products_mod'] = products[['products_mod', 'aisle', 'department']].values.tolist()
+#products['products_mod'] = products['products_mod'].values.tolist()
 products['products_mod'] = products['products_mod'].apply(lambda x:list(flatten(x)))
 
 # %%
@@ -254,5 +258,4 @@ print_test(100)
 ingredients = recipes_ingredients_raw[recipes_ingredients_raw['name']=='i stole the idea from mirj  sesame noodles']['ingredients']
 ' - '.join(map(str, ingredients))
 
-# TODO: Remove products that are not food
-# TODO: If the order has too many "cleaning", remove the order?
+# %%
