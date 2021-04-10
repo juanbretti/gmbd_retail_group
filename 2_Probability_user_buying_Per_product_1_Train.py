@@ -71,7 +71,7 @@ departments = pd.read_csv(zf1.open('departments.csv'))
 zf1 = zp.ZipFile("data/aisles.csv.zip")
 aisles = pd.read_csv(zf1.open('aisles.csv'))
 
-zf1 = zp.ZipFile("data/recipes/RAW_recipes.csv.zip")
+zf1 = zp.ZipFile("data/RAW_recipes.csv.zip")
 recipes = pd.read_csv(zf1.open('RAW_recipes.csv'))
 
 # %%
