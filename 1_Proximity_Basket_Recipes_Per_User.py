@@ -82,8 +82,8 @@ products = products[~products.department.isin(no_food_dep)]
 
 # https://stackoverflow.com/a/43898233/3780957
 # https://stackoverflow.com/a/57225427/3780957
-# products['products_mod'] = products[['products_mod', 'aisle', 'department']].values.tolist()
-products['products_mod'] = products['products_mod'].values.tolist()
+products['products_mod'] = products[['products_mod', 'aisle', 'department']].values.tolist()
+#products['products_mod'] = products['products_mod'].values.tolist()
 products['products_mod'] = products['products_mod'].apply(lambda x:list(flatten(x)))
 
 # %%
@@ -252,5 +252,5 @@ def print_test(x):
     print('** First recommended recipes **')
     print(order_info['name'][:3])
 
-print_test(30)
+print_test(100)
 # %%
