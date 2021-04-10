@@ -257,7 +257,7 @@ df_r = recipes_ingredients[['ingredient_id', 'ingredient_name', 'vectors']].\
     rename(columns={'ingredient_id': 'id', 'ingredient_name': 'name'}).\
     assign(source='Recipe')
 df_o = products[['product_id', 'product_name', 'vectors']].\
-    rename(columns={'order_id': 'id', 'product_name': 'name'}).\
+    rename(columns={'product_id': 'id', 'product_name': 'name'}).\
     assign(source='Order')
 df_ro = pd.concat([df_r, df_o])
 

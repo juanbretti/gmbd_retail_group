@@ -88,6 +88,10 @@ products['products_mod'] = products['products_mod'].str.split()
 products = pd.merge(products, departments, on="department_id", how='outer')
 products = pd.merge(products, aisles, on="aisle_id", how='outer')
 
+# Remove products that are not food
+no_food_department = ['personal care', 'household', 'babies', 'pets']
+products = products[~products['department'].isin(no_food_department)]
+
 # Append aisle and department
 products['products_mod'] = products[['products_mod', 'aisle', 'department']].values.tolist()
 products['products_mod'] = products['products_mod'].apply(lambda x:list(flatten(x)))
@@ -173,6 +177,8 @@ aisles['vectors'] = w2v_applied(aisles, 'aisle', 'aisle_id')
 
 ### `orders lists` ----
 orders_filter = order_products_prior[order_products_prior.order_id < SPEED_LIMIT_ORDERS]
+# Remove products that are not food
+orders_filter = orders_filter[orders_filter['product_id'].isin(products['product_id'])]
 orders_filter = pd.merge(orders_filter, orders, on='order_id')
 # Replace with the products
 orders_filter_user = orders_filter.groupby(['order_id', 'user_id']).agg({'product_id':lambda x: list(set(x))})

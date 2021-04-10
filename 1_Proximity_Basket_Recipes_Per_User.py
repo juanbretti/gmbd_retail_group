@@ -15,6 +15,10 @@ import zipfile as zp
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 
+import plotly.offline as pyo
+import plotly.graph_objs as go
+from plotly.tools import FigureFactory as FF
+import plotly.express as px
 # %%
 ## Constants ----
 # Limit of number of orders to process
@@ -68,7 +72,7 @@ recipes = pd.read_csv(zf1.open('RAW_recipes.csv'))
 # Make everything lowercase.
 products['products_mod'] = products['product_name'].str.lower()
 # Clean special characters.
-products['products_mod'] = products['products_mod'].str.replace('\W', ' ')
+products['products_mod'] = products['products_mod'].str.replace('\W', ' ', regex=True)
 # Split products into terms: Tokenize.
 products['products_mod'] = products['products_mod'].str.split()
 
@@ -76,9 +80,9 @@ products['products_mod'] = products['products_mod'].str.split()
 products = pd.merge(products, departments, on="department_id", how='outer')
 products = pd.merge(products, aisles, on="aisle_id", how='outer')
 
-# #Remove products that are not food
-# no_food_dep = ['personal care', 'household', 'babies', 'pets']
-# products = products[~products.department.isin(no_food_dep)]
+# Remove products that are not food
+no_food_department = ['personal care', 'household', 'babies', 'pets']
+products = products[~products['department'].isin(no_food_department)]
 
 # https://stackoverflow.com/a/43898233/3780957
 # https://stackoverflow.com/a/57225427/3780957
@@ -118,7 +122,7 @@ recipes_ingredients_raw['ingredients'] = recipes_ingredients_raw['ingredients'].
 
 recipes_ingredients_list = recipes_ingredients_raw.explode('ingredients')
 recipes_ingredients_list['ingredients'] = recipes_ingredients_list['ingredients'].str.lower()
-recipes_ingredients_list['ingredients'] = recipes_ingredients_list['ingredients'].str.replace('\W', ' ')
+recipes_ingredients_list['ingredients'] = recipes_ingredients_list['ingredients'].str.replace('\W', ' ', regex=True)
 
 # Dataframe of unique values
 recipes_ingredients = pd.DataFrame(recipes_ingredients_list['ingredients'].unique(), columns=['ingredient_name'])
@@ -182,7 +186,10 @@ iv = annoy_build(recipes_ingredients, 'ingredient_id')
 
 # %%
 ### `orders lists` ----
+# Limit the number of orders
 orders_filter = order_products_prior[order_products_prior.order_id < SPEED_LIMIT_ORDERS]
+# Remove products that are not food
+orders_filter = orders_filter[orders_filter['product_id'].isin(products['product_id'])]
 orders_filter = pd.merge(orders_filter, orders, on='order_id')
 order_baskets = orders_filter.groupby('user_id')['product_id'].apply(set).apply(list)
 
@@ -210,6 +217,52 @@ df_recipes_list = pd.DataFrame(recipes_list.items(), columns=['recipes_id', 'ing
 df_recipes_list['vectors'] = list_w2v.values()
 
 rl = annoy_build(df_recipes_list, 'recipes_id')
+
+# %%
+## TSNE plot ----
+def tsne_plot(df, title='Comparison of datasets', auto_open=True, id='id'):
+
+    tsne_model = TSNE(perplexity=30, n_components=2, init='pca', n_iter=3500, random_state=42)
+    tsne_values = tsne_model.fit_transform(list(df['vectors']))
+
+    df['tsne-2d-one'] = tsne_values[:, 0]
+    df['tsne-2d-two'] = tsne_values[:, 1]
+    df['hover'] = 'ID: ' + df[id].astype(str)
+    
+    df.sort_values(by='source', ascending=False, inplace=True)
+
+    fig = px.scatter(df, x="tsne-2d-one", y="tsne-2d-two",
+                    color='source', 
+                    title=title,
+                    hover_data=['hover'],
+                    labels={
+                        "tsne-2d-one": "Dimension one",
+                        "tsne-2d-two": "Dimension two",
+                        "source": "Source reference"
+                    })
+    pyo.plot(fig, filename=f'plots/tsne_plot_{title}.html', auto_open=auto_open)
+
+# %%
+### Orders vs recipes ----
+df_r = df_recipes_list[['recipes_id', 'vectors']].rename(columns={'recipes_id': 'id'}).assign(source='Recipe')
+df_o = df_order_baskets[['user_id', 'vectors']].rename(columns={'user_id': 'id'}).assign(source='Order')
+df_ro = pd.concat([df_r, df_o])
+
+tsne_plot(df=df_ro, title='Comparison between `Recipes` and `Orders`')
+
+# %%
+### Products vs ingredients ----
+df_r = recipes_ingredients[['ingredient_id', 'ingredient_name', 'vectors']].\
+    rename(columns={'ingredient_id': 'id', 'ingredient_name': 'name'}).\
+    assign(source='Recipe')
+df_o = products[['product_id', 'product_name', 'vectors']].\
+    rename(columns={'product_id': 'id', 'product_name': 'name'}).\
+    assign(source='Order')
+df_ro = pd.concat([df_r, df_o])
+
+tsne_plot(df=df_ro.sample(n=2000, random_state=42), 
+    title='Comparison between `Recipes ingredients` and `Orders products`',
+    id='name')
 
 # %%
 ## Closest Recipes (by ticket) ----
