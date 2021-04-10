@@ -250,6 +250,8 @@ df_ro = pd.concat([df_r, df_o])
 
 tsne_plot(df=df_ro, title='Comparison between `Recipes` and `Orders`')
 
+# The `recipes` are exceeding the average `user` average basket, but still some of those are close to the products the customers are buying at Instacart.
+# So, it's likely the recipes are not going to be fully covered with the products on any user average basket.
 # %%
 ### Products vs ingredients ----
 df_r = recipes_ingredients[['ingredient_id', 'ingredient_name', 'vectors']].\
@@ -263,6 +265,9 @@ df_ro = pd.concat([df_r, df_o])
 tsne_plot(df=df_ro.sample(n=2000, random_state=42), 
     title='Comparison between `Recipes ingredients` and `Orders products`',
     id='name')
+
+# The `products` from the orders and `ingredients` from the recipes, are well distributed in the latent space.
+# This shows that the `Word2Vec` is behaving as expected, representing the names in a latent space.
 
 # %%
 ## Closest Recipes (by ticket) ----
