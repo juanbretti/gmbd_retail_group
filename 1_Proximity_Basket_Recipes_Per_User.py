@@ -252,5 +252,5 @@ def print_test(x):
     print('** First recommended recipes **')
     print(order_info['name'][:3])
 
-print_test(30)
+print_test(100)
 # %%
